@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bingo (隨機填入)</title>
+
+  <!-- Bootstrap 5 & jQuery（CDN） -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <style>
+    :root{
+      --cell-gap: 8px;
+      --cell-radius: 10px;
+      --cell-border: 2px;
+      --cell-bg: #f8f9fa;
+      --cell-active: #ffe08a;
+      --cell-hover: #f1f3f5;
+      --cell-border-color: #dee2e6;
+    }
+
+    body { background:#fff; }
+
+    .toolbar {
+      max-width: 720px;
+      margin: 20px auto 0;
+      padding: 0 12px;
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    .bingo-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: var(--cell-gap);
+      width: 100%;
+      max-width: 720px;
+      margin: 16px auto 32px;
+      padding: 0 var(--cell-gap);
+    }
+
+    .bingo-cell {
+      position: relative;
+      aspect-ratio: 1 / 1;
+      border: var(--cell-border) solid var(--cell-border-color);
+      border-radius: var(--cell-radius);
+      background: var(--cell-bg);
+      cursor: pointer;
+      transition: background-color .15s ease, transform .05s ease;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 6%;
+      overflow: hidden;
+    }
+    .bingo-cell:hover { background: var(--cell-hover); }
+    .bingo-cell:active { transform: scale(0.98); }
+    .bingo-cell.active {
+      background: var(--cell-active);
+      box-shadow: inset 0 0 0 2px rgba(0,0,0,.06);
+    }
+
+    .bingo-label {
+      width: 100%;
+      line-height: 1.1;
+      word-break: break-word;
+      font-size: clamp(12px, 2.4vw, 22px);
+      font-weight: 600;
+      color: #343a40;
+    }
+
+    @supports not (aspect-ratio: 1 / 1) {
+      .bingo-cell::before{ content:""; display:block; padding-top:100%; }
+      .bingo-cell > .bingo-label{ position:absolute; inset:6%; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="toolbar">
+    <button id="btnRandom" class="btn btn-primary btn-sm">隨機填入</button>
+  </div>
+
+  <div class="bingo-grid" id="bingoGrid">
+    <!-- 25 格 -->
+    <div class="bingo-cell"></div><div class="bingo-cell"></div><div class="bingo-cell"></div><div class="bingo-cell"></div><div class="bingo-cell"></div>
+    <div class="bingo-cell"></div><div class="bingo-cell"></div><div class="bingo-cell"></div><div class="bingo-cell"></div><div class="bingo-cell"></div>
+    <div class="bingo-cell"></div><div class="bingo-cell"></div><div class="bingo-cell"></div><div class="bingo-cell"></div><div class="bingo-cell"></div>
+    <div class="bingo-cell"></div><div class="bingo-cell"></div><div class="bingo-cell"></div><div class="bingo-cell"></div><div class="bingo-cell"></div>
+    <div class="bingo-cell"></div><div class="bingo-cell"></div><div class="bingo-cell"></div><div class="bingo-cell"></div><div class="bingo-cell"></div>
+  </div>
+
+  <script>
+    // 你的詞庫（可自由增刪；每次會隨機抽 25 個不重複）
+    const POOL = [
+      '高醫','阮綜合醫院','大同醫院','下雨天協勤','內科OHCA','Trauma OHCA','聖功醫院','長庚醫院','榮民總醫院','車上CPR',
+      '凱旋醫院','民生醫院','遇到精神病患','強制送醫使用約束帶','解鎖燒燙傷','火警救護','小飛俠','晴天娃娃','打撈','明顯死亡(屍僵屍腐）',
+      '明顯死亡（頭首分離）','急產接生','脫襪式傷口','低血糖','低血壓','瀕死式呼吸','耳漏鼻漏','執行辛辛那提異常','EKG','血糖',
+      '備IV','上頸圈','翻身上長背板','破門','正確使用器材給氧','BVM給氧','進階呼吸道給氧','架設盧卡斯','使用電動擔架','使用搬運椅',
+      '使用傳統擔架','抽吸式護木','斷肢','發燒','MI','COPD','非OHCA GCS 3分','一氧化碳中毒','線上派遣','醫師線上指導',
+      '酒醉路到','吸毒過量','自殘','同時有3個以上傷患','獨自評估患者','獨自處置患者','頭部外傷 GCS小於15','骨盆不穩定'
+    ];
+
+    // 洗牌（Fisher–Yates）
+    function shuffle(arr){
+      const a = arr.slice();
+      for(let i=a.length-1;i>0;i--){
+        const j = Math.floor(Math.random() * (i+1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    }
+
+    // 取前 n 個
+    function take(arr, n){ return arr.slice(0, n); }
+
+    // 將 25 個字填入格子
+    function fillGrid(items) {
+      const $cells = $('#bingoGrid .bingo-cell');
+      for (let i = 0; i < 25; i++) {
+        const text = items[i] ?? '';
+        const $label = $('<div/>', { 'class':'bingo-label', text });
+        $cells.eq(i).empty().append($label);
+      }
+    }
+
+    // 隨機填入（確保不重複）
+    function randomFill() {
+      const selected = take(shuffle(POOL), 25);
+      fillGrid(selected);
+    }
+
+    // 事件：按下按鈕 → 隨機填入
+    $('#btnRandom').on('click', randomFill);
+
+    // 點格子：切換選取
+    $(document).on('click', '.bingo-cell', function () {
+      $(this).toggleClass('active');
+    });
+
+    // 預設載入就先隨機一次（想手動才出現可註解掉）
+    $(randomFill);
+  </script>
+</body>
+</html>
